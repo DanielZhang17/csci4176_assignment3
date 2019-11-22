@@ -8,13 +8,22 @@
     tools:context=".MapsActivity">
 
     <com.google.android.material.floatingactionbutton.FloatingActionButton
-        android:id="@+id/button"
+    android:id="@+id/button"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_gravity="end"
+    android:layout_margin="20dp"
+    android:clickable="true"
+    android:focusable="true"
+    android:src="@drawable/ic_location"/>
+
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/settingsButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="end|bottom"
+        android:layout_gravity="start"
         android:layout_margin="20dp"
-        android:layout_marginBottom="50dp"
         android:clickable="true"
         android:focusable="true"
-        android:src="@drawable/ic_location" />
+        android:src="@drawable/ic_settings" />
 </fragment>
