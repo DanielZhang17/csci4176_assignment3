@@ -1,32 +1,21 @@
 package ca.dal.cs4176.azhang.bustracker
 
 import android.Manifest
-import android.app.Activity
 import android.content.Context
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.Canvas
+import android.graphics.*
 import android.location.Location
 import android.os.AsyncTask
-import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import android.view.LayoutInflater
-import android.view.Menu
-import android.view.View
-import android.view.View.inflate
-import android.view.ViewGroup
-import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.google.android.gms.location.FusedLocationProviderClient
-import com.google.android.gms.location.LocationCallback
-import com.google.android.gms.location.LocationRequest
-import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.*
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.OnMapReadyCallback
@@ -39,8 +28,8 @@ import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.google.transit.realtime.GtfsRealtime.FeedEntity
 import com.google.transit.realtime.GtfsRealtime.FeedMessage
 import java.net.ConnectException
-import java.net.MalformedURLException
 import java.net.URL
+
 class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
 
     private lateinit var mMap: GoogleMap
@@ -50,6 +39,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
     private lateinit var locationRequest:LocationRequest
     private lateinit var locationCallback: LocationCallback
     private var requestingLocationUpdates =false
+    private  var updateIn = 0
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
@@ -60,12 +50,25 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
             .findFragmentById(R.id.map) as SupportMapFragment
         mapFragment.getMapAsync(this)
         val button = findViewById<FloatingActionButton>(R.id.button)
+        //reserved for map following functionality
+        locationCallback = object : LocationCallback() {
+            override fun onLocationResult(locationResult: LocationResult?) {
+                locationResult ?: return
+                for (location in locationResult.locations) {
+                    var loc = LatLng(location.latitude, location.longitude)
+                    val follow = sharedPreferences.getBoolean("FOLLOW",false)
+                    if(follow)
+                        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(loc, 15.0f))
+                }
+            }
+        }
         button.setOnClickListener {
             locate()
         }
         mainHandler = Handler(Looper.getMainLooper())
-    }
+        sharedPreferences = getSharedPreferences("sharedPref", Context.MODE_PRIVATE)
 
+    }
     override fun onStart() {
         super.onStart()
         if (!hasLocationPermissions()) {
@@ -85,11 +88,14 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
     override fun onMapReady(googleMap: GoogleMap) {
         mMap = googleMap
         mMap.uiSettings.isZoomControlsEnabled = true
-        mMap.uiSettings.isCompassEnabled = true
         mMap.uiSettings.isMapToolbarEnabled=false
         mMap.uiSettings.isRotateGesturesEnabled=true
-        val loc = LatLng(44.6392264,-63.5863118)
-        mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(loc, 14.0f))
+        //Read the saved camera state and go to the default location if not found
+        val lat = sharedPreferences.getFloat("LAT",44.6392264f)
+        val lon = sharedPreferences.getFloat("LON",-63.5863118f)
+        val zoom = sharedPreferences.getFloat("ZOOM",14.0f)
+        val pan = sharedPreferences.getFloat("PAM",30.0f)//Not used
+        mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(lat.toDouble(),lon.toDouble()), zoom))
         getData()
     }
 
@@ -127,14 +133,16 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
     }
     fun hasLocationPermissions() = this.checkSelfPermission(
         Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-    private fun createLocationRequest() {
+    private fun createLocationRequest()
+    {
         locationRequest = LocationRequest.create().apply {
             interval = 10000
             fastestInterval = 5000
             priority = LocationRequest.PRIORITY_HIGH_ACCURACY
         }
     }
-    private val repeatingTask = object : Runnable {
+    private val repeatingTask = object : Runnable
+    {
         override fun run() {
             getData()
             //This is to update the bus location every 15 seconds
@@ -146,42 +154,60 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
     {
         var task = PositionReader().execute()
     }
-    private fun startLocationUpdates() {
+    private fun startLocationUpdates()
+    {
         fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper())
         requestingLocationUpdates = true
     }
-    override fun onResume() {
+    override fun onResume()
+    {
         super.onResume()
         mainHandler.post(repeatingTask)
         if (requestingLocationUpdates)
             startLocationUpdates()
     }
-    override fun onPause() {
+    override fun onPause()
+    {
         super.onPause()
         mainHandler.removeCallbacks(repeatingTask)
         stopLocationUpdates()
+        //save map camera state
+        val cam = mMap.cameraPosition
+        val lon = cam.target.longitude
+        val lat = cam.target.latitude
+        val zoom = cam.zoom
+        val pan = cam.tilt
+        with (sharedPreferences.edit()){
+            putFloat("LON",lon.toFloat())
+            putFloat("LAT",lat.toFloat())
+            putFloat("ZOOM",zoom)
+            putFloat("PAN",pan)
+            apply()
+        }
     }
     private fun stopLocationUpdates() {
         fusedLocationClient.removeLocationUpdates(locationCallback)
         requestingLocationUpdates = false
     }
-//Followed the answer on this post to figure out how to display the bus number in the marker properly https://stackoverflow.com/questions/24716987/using-an-xml-layout-for-a-google-map-marker-for-android
+/*https://stackoverflow.com/questions/24716987/using-an-xml-layout-for-a-google-map-marker-for-android
+ *https://stackoverflow.com/questions/15001455/saving-canvas-to-bitmap-on-android
+ *Those 2 posts are referenced to show the number in the custom marker
+ */
     private fun createMaker(cord:LatLng,busNumber:String):MarkerOptions{
-        val marker:MarkerOptions = MarkerOptions()
-        marker.position(cord)
-        val view:View = inflate(this,R.layout.bus_marker_layout, null)
-        view.layoutParams=ViewGroup.LayoutParams(50, 50)
-        view.layout(50,50,50,50)
-        val b: Bitmap = Bitmap.createBitmap(50,50,Bitmap.Config.ARGB_8888)
+        val marker = MarkerOptions()
+        marker.position(cord).title("Route: "+busNumber)
+        val paint = Paint()
+        paint.color = Color.RED
+        paint.textSize = 20.toFloat()
+        val icon = BitmapFactory.decodeResource(this.resources,R.drawable.ic_bus)
+        val b: Bitmap = Bitmap.createScaledBitmap(icon,74,74,false)
         val c = Canvas(b)
-        var busID = view.findViewById<TextView>(R.id.bus_id)
-        busID.text = busNumber
-        view.draw(c)
+        c.drawText(busNumber,30.toFloat(),30.toFloat(),paint)
         marker.icon(BitmapDescriptorFactory.fromBitmap(b))
         return marker
     }
 
-//translated the Java code in the slides to Kotlin
+//referenced the Java code in the slides to Kotlin
     inner class PositionReader : AsyncTask<Void,Void,List<FeedEntity>>(){
 
         private val url:URL = URL("http://gtfs.halifax.ca/realtime/Vehicle/VehiclePositions.pb")
@@ -202,13 +228,14 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         }
         override
         fun onPostExecute(feedEntities:List<FeedEntity>) {
-            mMap.clear()
+            mMap.clear()//this avoids doubling the amount of buses every 15s
             for (entity:FeedEntity in feedEntities) {
                 //map updates
                 val routeID = entity.vehicle.trip.routeId
+                val direction = entity.vehicle.trip.directionId
                 val loc = LatLng(entity.vehicle.position.latitude.toDouble(),entity.vehicle.position.longitude.toDouble())
-                mMap.addMarker(MarkerOptions().position(loc).title(routeID).icon(BitmapDescriptorFactory.fromResource(R.drawable.ic_bus)))
-                //mMap.addMarker(createMaker(loc,routeID))
+                //mMap.addMarker(MarkerOptions().position(loc).title(routeID).icon(BitmapDescriptorFactory.fromResource(R.drawable.ic_bus)))
+                mMap.addMarker(createMaker(loc,routeID))
             }
         }
     }
