@@ -90,6 +90,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         mMap.uiSettings.isZoomControlsEnabled = true
         mMap.uiSettings.isMapToolbarEnabled=false
         mMap.uiSettings.isRotateGesturesEnabled=true
+        mMap.uiSettings.isCompassEnabled=false
         //Read the saved camera state and go to the default location if not found
         val lat = sharedPreferences.getFloat("LAT",44.6392264f)
         val lon = sharedPreferences.getFloat("LON",-63.5863118f)
@@ -122,7 +123,8 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
                 if(location!=null) {
                     Log.d("CORD",location.latitude.toString()+","+location.longitude)
                     val loc = LatLng(location.latitude,location.longitude)
-                    mMap.addMarker(MarkerOptions().position(loc))
+                    //mMap.addMarker(MarkerOptions().position(loc).title("My Location"))
+                    //Does not need to show the marker since the button does is to center the map to the current location
                     mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(loc, 16.0f))
                 }
                 else
@@ -207,7 +209,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         return marker
     }
 
-//referenced the Java code in the slides to Kotlin
+//referenced the Java code in the slides
     inner class PositionReader : AsyncTask<Void,Void,List<FeedEntity>>(){
 
         private val url:URL = URL("http://gtfs.halifax.ca/realtime/Vehicle/VehiclePositions.pb")
